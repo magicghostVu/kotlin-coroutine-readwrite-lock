@@ -60,7 +60,6 @@ class ReadWriteMutex {
                         logger.debug("cancel read at waiting ticket")
                         throw e
                     }
-
                     continue
                 }
 
@@ -68,6 +67,7 @@ class ReadWriteMutex {
                     return try {
                         action()
                     } finally {
+                        // lock time is very short and it is acceptable
                         synchronized(this) {
                             //logger.debug("current state is {}", state)
                             when (val tTState = state) {
