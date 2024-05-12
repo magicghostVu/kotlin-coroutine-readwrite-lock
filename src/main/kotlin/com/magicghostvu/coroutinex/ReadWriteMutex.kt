@@ -55,7 +55,8 @@ class ReadWriteMutex {
                     val ticketRetry = ticketOrAllowedAction.value
                     try {
                         ticketRetry.await()
-                    }catch (e: CancellationException){
+                    } catch (e: CancellationException) {
+                        //todo: post process like action success
                         logger.debug("cancel read at waiting ticket")
                         throw e
                     }
@@ -132,7 +133,7 @@ class ReadWriteMutex {
                     try {
                         ticketOrAllowedWrite.value.await()
                     } catch (e: CancellationException) {
-                        // todo: awake other to retry again
+                        // todo: post process like action success
                         logger.info("canceled write at waiting ticket", e)
                         throw e
                     }
