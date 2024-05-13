@@ -15,38 +15,39 @@ suspend fun main() {
     delay(1000)
     coroutineScope {
         val readWriteMutex = ReadWriteMutex()
-
         var t = 0;
         launch {
+            logger.debug("c1 try to write")
             readWriteMutex.write {
-                logger.debug("t plus c1 is {}", ++t)
+                logger.debug("c1 write success ,t plus {}", ++t)
                 delay(1500)
                 logger.debug("done c1")
             }
         }
 
-        val j = launch {
+        launch {
             delay(100)
-            logger.debug("req access write")
-            readWriteMutex.write {
-                logger.debug("never happen")
+            logger.debug("c2 try to read")
+            readWriteMutex.read {
+                logger.debug("c2 read success t is {}",t)
             }
         }
 
-        val j2 = launch {
-            readWriteMutex.read {
-                logger.debug("enter read success")
+        val j3 = launch {
+            delay(500)
+            logger.debug("c3 try to write")
+            readWriteMutex.write {
+                logger.debug("maybe never happen")
             }
         }
 
         launch {
+            logger.debug("start c4")
             delay(1000)
-            j.cancel()
-            logger.debug("j canceled")
-            delay(500)
-            j2.cancel()
-            logger.debug("j2 canceled")
+            j3.cancel()
+            logger.debug("j3 canceled")
         }
+
     }
 
     logger.debug("done main")

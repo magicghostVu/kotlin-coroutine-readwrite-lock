@@ -58,6 +58,7 @@ class ReadWriteMutex {
                     } catch (e: CancellationException) {
                         //todo: post process like action success
                         logger.debug("cancel read at waiting ticket")
+                        onCancelTicketRead()
                         throw e
                     }
                     continue
@@ -71,7 +72,6 @@ class ReadWriteMutex {
                         synchronized(this) {
                             //logger.debug("current state is {}", state)
                             when (val tTState = state) {
-
                                 is Reading -> {
                                     logger.debug("reading count is {}", tTState.readingCount)
                                     tTState.readingCount--
@@ -85,12 +85,12 @@ class ReadWriteMutex {
                                                 it.complete(Unit)
                                             }
                                         }
-                                        logger.debug("comeback to empty")
+                                        logger.debug("comeback to empty from read")
                                         state = Empty
                                     }
                                 }
 
-                                Empty,
+                                Empty -> {}
                                 is Writing -> {
                                     throw IllegalArgumentException("impossible")
                                 }
@@ -123,7 +123,7 @@ class ReadWriteMutex {
                     }
 
                     is Writing -> {
-                        logger.debug("add write request")
+                        //logger.debug("add write request")
                         Either.left(tState.addWriteReq())
                     }
                 }
@@ -134,7 +134,8 @@ class ReadWriteMutex {
                         ticketOrAllowedWrite.value.await()
                     } catch (e: CancellationException) {
                         // todo: post process like action success
-                        logger.info("canceled write at waiting ticket", e)
+                        //logger.info("canceled write at waiting ticket", e)
+                        onCancelTicketWrite()
                         throw e
                     }
                     continue
@@ -151,18 +152,21 @@ class ReadWriteMutex {
                                     throw IllegalArgumentException("impossible, review code")
                                 }
 
+                                // todo: consider optimize this
                                 is Writing -> {
-                                    if (tTState.reqWrite.isNotEmpty()) {
-                                        tTState.reqWrite.forEach {
-                                            it.complete(Unit)
-                                        }
-                                    } else {// check read req và notify all
-                                        val readQueue = tTState.readQueue
-                                        if (readQueue.isNotEmpty()) {
-                                            readQueue.forEach {
-                                                it.complete(Unit)
-                                            }
-                                        }
+
+                                    // báo hiệu cho tất cả các read và write req recheck
+                                    logger.debug(
+                                        "read req is {}, write req is {}",
+                                        tTState.readQueue.size,
+                                        tTState.writeQueue.size
+                                    )
+
+                                    tTState.writeQueue.forEach {
+                                        it.complete(Unit)
+                                    }
+                                    tTState.readQueue.forEach {
+                                        it.complete(Unit)
                                     }
                                     logger.debug("writing comeback to empty")
                                     state = Empty
@@ -174,6 +178,32 @@ class ReadWriteMutex {
             }
         }
 
+    }
+
+
+    // do nothing ??
+    private fun onCancelTicketWrite() = synchronized(this) {
+        when (val tState = state) {
+            Empty -> {}
+            is Reading -> {
+
+            }
+
+            is Writing -> {
+
+            }
+        }
+    }
+
+    private fun onCancelTicketRead(): Unit = synchronized(this) {
+        when (val tState = state) {
+            Empty -> {
+
+            }
+
+            is Reading -> {}
+            is Writing -> {}
+        }
     }
 
 }
@@ -206,7 +236,7 @@ internal class Reading(
 }
 
 internal class Writing(
-    val reqWrite: LinkedList<CompletableDeferred<Unit>>,
+    val writeQueue: LinkedList<CompletableDeferred<Unit>>,
     val readQueue: MutableList<CompletableDeferred<Unit>>
 ) : ReadWriteMutexStateData() {
 
@@ -219,7 +249,7 @@ internal class Writing(
 
     fun addWriteReq(): CompletableDeferred<Unit> {
         val res = CompletableDeferred<Unit>()
-        reqWrite.add(res)
+        writeQueue.add(res)
         return res
     }
 }
