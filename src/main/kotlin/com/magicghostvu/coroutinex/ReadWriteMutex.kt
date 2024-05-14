@@ -220,7 +220,10 @@ class ReadWriteMutex {
                                 Empty,
                                 is WaitCurrentReadDone,
                                 is Reading -> {
-                                    logger.warn("wrong logic happen somewhere, review code, state is {}", tTState.javaClass.simpleName)
+                                    logger.warn(
+                                        "wrong logic happen somewhere, review code, state is {}",
+                                        tTState.javaClass.simpleName
+                                    )
                                 }
 
                                 is Writing -> {
@@ -254,6 +257,7 @@ class ReadWriteMutex {
 
     }
 
+    // writing maybe in operation
     private fun onCancelTicketWrite(ticket: CompletableDeferred<WriteReqData>) = synchronized(this) {
         logger.debug("cancel ticket write at {}", state.javaClass.simpleName)
         when (val tState = state) {
@@ -267,25 +271,11 @@ class ReadWriteMutex {
                 val removed = writeQueue.remove(ticket)
 
                 // không còn ticket này
-                if (!removed) {
-                    logger.debug("ticket already dispatch complete before, so dispatch next ticket")
-                    if (writeQueue.isNotEmpty()) {
-                        val nextTicket = writeQueue.removeFirst()
-                        nextTicket.complete(WriteReqWithToken())
-                    } else {
-                        tState.readQueue.forEach {
-                            it.complete(Unit)
-                        }
-                        state = Empty
-                    }
+                if (removed) {
+                    logger.debug("ticket write removed")
                 } else {
-                    // nếu không còn cái nào thì chuyển qua empty và đánh thức tất cả các read req
-                    if (writeQueue.isEmpty()) {
-                        tState.readQueue.forEach {
-                            it.complete(Unit)
-                        }
-                        state = Empty
-                    }else {}
+                    // todo: do somethings
+                    logger.debug("this ticket already dispatched,but will not run next action write")
                 }
             }
         }
