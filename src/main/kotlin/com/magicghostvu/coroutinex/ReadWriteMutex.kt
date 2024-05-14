@@ -27,10 +27,7 @@ class ReadWriteMutex {
                 when (val tState = state) {
                     Empty -> {
                         logger.debug("empty to reading")
-                        state = Reading(
-                            LinkedList(),
-                            1
-                        )
+                        state = Reading()
                         Either.right(Unit)
                     }
 
@@ -40,8 +37,17 @@ class ReadWriteMutex {
                         Either.right(Unit)
                     }
 
+                    is WaitCurrentReadDone -> {
+                        logger.debug("add read req at waiting all current read done")
+                        Either.left(tState.addReadReq())
+                    }
+
                     is Writing -> {
-                        //todo: add read req to the queue to notify later
+                        val ticket = tState.addReadReq()
+                        Either.left(ticket)
+                    }
+
+                    is ContinueWrite -> {
                         val ticket = tState.addReadReq()
                         Either.left(ticket)
                     }
@@ -77,18 +83,48 @@ class ReadWriteMutex {
                                     // thử check write
 
                                     if (tTState.readingCount == 0) {
-                                        if (tTState.reqWrite.isNotEmpty()) {
-                                            // todo: notify for all write req
-                                            tTState.reqWrite.forEach {
-                                                it.complete(Unit)
+                                        val writeQueue = tTState.writeQueue
+                                        if (writeQueue.isNotEmpty()) {
+                                            val firstTicket = writeQueue.first()
+                                            writeQueue.remove(firstTicket)
+                                            if (writeQueue.isNotEmpty()) {
+                                                state = ContinueWrite(
+                                                    writeQueue,
+                                                    mutableListOf()
+                                                )
+                                                // maybe first ticket đã bị hủy
+                                                firstTicket.complete(WriteReqWithToken())
+                                            } else {
+                                                firstTicket.complete(EmptyWriteReq)
+                                                state = Empty
                                             }
+                                        } else {
+                                            logger.debug("comeback to empty from read")
+                                            state = Empty
                                         }
-                                        logger.debug("comeback to empty from read")
-                                        state = Empty
+                                    }
+                                }
+
+                                is WaitCurrentReadDone -> {
+                                    tTState.numCurrentRead--
+                                    // all read done
+                                    // move to write
+                                    if (tTState.numCurrentRead == 0) { //về writing nhưng phải có token mới vào được???
+                                        val writeQueue = tTState.writeQueue
+                                        if (writeQueue.isNotEmpty()) {
+                                            val firstTicket = writeQueue.first()
+                                            writeQueue.remove(firstTicket)
+                                            firstTicket.complete(WriteReqWithToken())
+                                            state = ContinueWrite(
+                                                writeQueue,
+                                                tTState.readQueue
+                                            )
+                                        }
                                     }
                                 }
 
                                 Empty -> {}
+                                is ContinueWrite,
                                 is Writing -> {
                                     throw IllegalArgumentException("impossible")
                                 }
@@ -106,35 +142,70 @@ class ReadWriteMutex {
         contract {
             callsInPlace(action, InvocationKind.EXACTLY_ONCE)
         }
-        // temp var here to save req data for write???
+
+        var ticketDataReq: WriteReqData = EmptyWriteReq
+
         while (true) {
-            val ticketOrAllowedWrite: Either<CompletableDeferred<Unit>, Unit> = synchronized(this) {
+            val ticketOrAllowedWrite: Either<CompletableDeferred<WriteReqData>, Unit> = synchronized(this) {
                 when (val tState = state) {
                     Empty -> {
                         //allow to write
-                        state = Writing(LinkedList(), mutableListOf())
+                        state = Writing(mutableListOf())
                         Either.right(Unit)
                     }
 
                     is Reading -> {
-                        val ticket = tState.addWriteReq()
+                        // todo: chuyển sang wait read done
+                        val t = WaitCurrentReadDone(
+                            tState.readingCount,
+                            tState.writeQueue,
+                            mutableListOf()
+                        )
+                        val ticket = t.addWriteReq()
+                        state = t
                         Either.left(ticket)
                     }
 
                     is Writing -> {
-                        //logger.debug("add write request")
-                        Either.left(tState.addWriteReq())
+                        // todo: move to continue write
+                        val t = ContinueWrite(
+                            linkedSetOf(),
+                            tState.readQueue
+                        )
+                        val ticket = t.addWriteReq()
+                        state = t
+                        Either.left(ticket)
+                    }
+
+                    is WaitCurrentReadDone -> {
+                        val ticket = tState.addWriteReq()
+                        Either.left(ticket)
+                    }
+
+                    // bị loop ở đây do không bao giờ vào được write khi đang continue write
+                    is ContinueWrite -> {
+                        when (ticketDataReq) {
+                            EmptyWriteReq -> {
+                                val ticket = tState.addWriteReq()
+                                Either.left(ticket)
+                            }
+
+                            is WriteReqWithToken -> {
+                                Either.right(Unit)
+                            }
+                        }
                     }
                 }
             }
             when (ticketOrAllowedWrite) {
                 is Left -> {
+                    val ticket = ticketOrAllowedWrite.value
                     try {
-                        ticketOrAllowedWrite.value.await()
+                        ticketDataReq = ticket.await()
                     } catch (e: CancellationException) {
                         // todo: post process like action success
                         //logger.info("canceled write at waiting ticket", e)
-                        onCancelTicketWrite()
+                        onCancelTicketWrite(ticket)
                         throw e
                     }
                     continue
@@ -147,28 +218,32 @@ class ReadWriteMutex {
                         synchronized(this) {
                             when (val tTState = state) {
                                 Empty,
+                                is WaitCurrentReadDone,
                                 is Reading -> {
-                                    throw IllegalArgumentException("impossible, review code")
+                                    logger.warn("wrong logic happen somewhere, review code, state is {}", tTState.javaClass.simpleName)
                                 }
 
-                                // todo: consider optimize this
                                 is Writing -> {
-
-                                    // báo hiệu cho tất cả các read và write req re-check
-                                    logger.debug(
-                                        "read req is {}, write req is {}",
-                                        tTState.readQueue.size,
-                                        tTState.writeQueue.size
-                                    )
-
-                                    tTState.writeQueue.forEach {
-                                        it.complete(Unit)
-                                    }
                                     tTState.readQueue.forEach {
                                         it.complete(Unit)
                                     }
-                                    logger.debug("writing comeback to empty")
+                                    logger.debug("writing comeback to empty read queue is {}", tTState.readQueue.size)
                                     state = Empty
+                                }
+
+                                is ContinueWrite -> {
+                                    val writeQueue = tTState.writeQueue
+                                    if (writeQueue.isNotEmpty()) {
+                                        val ticket = tTState.writeQueue.removeFirst()
+                                        ticket.complete(WriteReqWithToken())
+                                    } else {
+                                        // báo cho tất cả các read biết để vào read
+                                        tTState.readQueue.forEach {
+                                            it.complete(Unit)
+                                        }
+                                        logger.debug("continue write comeback to empty")
+                                        state = Empty
+                                    }
                                 }
                             }
                         }
@@ -179,33 +254,81 @@ class ReadWriteMutex {
 
     }
 
-
-    // do nothing ??
-    private fun onCancelTicketWrite() = synchronized(this) {
+    private fun onCancelTicketWrite(ticket: CompletableDeferred<WriteReqData>) = synchronized(this) {
+        logger.debug("cancel ticket write at {}", state.javaClass.simpleName)
         when (val tState = state) {
             Empty -> {}
+            is Reading -> {}
+            is Writing -> {}
+            is WaitCurrentReadDone -> {}
+            is ContinueWrite -> {
+                // gọi req tiếp theo vào
+                val writeQueue = tState.writeQueue
+                val removed = writeQueue.remove(ticket)
+
+                // không còn ticket này
+                if (!removed) {
+                    logger.debug("ticket already dispatch complete before, so dispatch next ticket")
+                    if (writeQueue.isNotEmpty()) {
+                        val nextTicket = writeQueue.removeFirst()
+                        nextTicket.complete(WriteReqWithToken())
+                    } else {
+                        tState.readQueue.forEach {
+                            it.complete(Unit)
+                        }
+                        state = Empty
+                    }
+                } else {
+                    // nếu không còn cái nào thì chuyển qua empty và đánh thức tất cả các read req
+                    if (writeQueue.isEmpty()) {
+                        tState.readQueue.forEach {
+                            it.complete(Unit)
+                        }
+                        state = Empty
+                    }else {}
+                }
+            }
+        }
+    }
+
+    private fun <T> MutableSet<T>.removeFirst(): T {
+        if (this.isEmpty()) throw IllegalArgumentException("empty set")
+        val first = this.first()
+        this.remove(first)
+        return first
+    }
+
+    private fun onCancelTicketRead(): Unit = synchronized(this) {
+        when (val tState = state) {
+            Empty -> {
+            }
+
             is Reading -> {
+            }
+
+            is WaitCurrentReadDone -> {
 
             }
 
             is Writing -> {
 
             }
-        }
-    }
 
-    private fun onCancelTicketRead(): Unit = synchronized(this) {
-        when (val tState = state) {
-            Empty -> {
+            is ContinueWrite -> {
 
             }
 
-            is Reading -> {}
-            is Writing -> {}
         }
     }
 
+
 }
+
+internal sealed class WriteReqData()
+
+internal object EmptyWriteReq : WriteReqData()
+
+internal class WriteReqWithToken(val token: Int = 0) : WriteReqData()
 
 
 // hiện tại khi đang read thì write sẽ không thể vào
@@ -221,23 +344,40 @@ internal object Empty : ReadWriteMutexStateData() {
 
 }
 
+
+internal sealed class HadWriteQueue() : ReadWriteMutexStateData() {
+    abstract val writeQueue: MutableSet<CompletableDeferred<WriteReqData>>
+}
+
 internal class Reading(
-    val reqWrite: LinkedList<CompletableDeferred<Unit>> = LinkedList(),
+    override val writeQueue: MutableSet<CompletableDeferred<WriteReqData>> = linkedSetOf(),
     var readingCount: Int = 0,
-) : ReadWriteMutexStateData() {
+) : HadWriteQueue() {
 
 
-    fun addWriteReq(): CompletableDeferred<Unit> {
-        val res = CompletableDeferred<Unit>()
-        reqWrite.add(res)
+    fun addWriteReq(): CompletableDeferred<WriteReqData> {
+        val res = CompletableDeferred<WriteReqData>()
+        writeQueue.add(res)
         return res
     }
 }
 
 internal class Writing(
-    val writeQueue: LinkedList<CompletableDeferred<Unit>>,
-    val readQueue: MutableList<CompletableDeferred<Unit>>
+    val readQueue: MutableList<CompletableDeferred<Unit>>,
 ) : ReadWriteMutexStateData() {
+
+    fun addReadReq(): CompletableDeferred<Unit> {
+        val res = CompletableDeferred<Unit>()
+        readQueue.add(res)
+        return res
+    }
+
+}
+
+internal class ContinueWrite(
+    override val writeQueue: MutableSet<CompletableDeferred<WriteReqData>>,
+    val readQueue: MutableList<CompletableDeferred<Unit>>,
+) : HadWriteQueue() {
 
 
     fun addReadReq(): CompletableDeferred<Unit> {
@@ -246,9 +386,31 @@ internal class Writing(
         return res
     }
 
-    fun addWriteReq(): CompletableDeferred<Unit> {
-        val res = CompletableDeferred<Unit>()
+    fun addWriteReq(): CompletableDeferred<WriteReqData> {
+        val res = CompletableDeferred<WriteReqData>()
         writeQueue.add(res)
         return res
     }
 }
+
+internal class WaitCurrentReadDone(
+    var numCurrentRead: Int,
+    override val writeQueue: MutableSet<CompletableDeferred<WriteReqData>>,
+    val readQueue: MutableList<CompletableDeferred<Unit>>,
+) : HadWriteQueue() {
+    fun addReadReq(): CompletableDeferred<Unit> {
+        val res = CompletableDeferred<Unit>()
+        readQueue.add(res)
+        return res
+    }
+
+    fun addWriteReq(): CompletableDeferred<WriteReqData> {
+        val res = CompletableDeferred<WriteReqData>()
+        writeQueue.add(res)
+        return res
+    }
+}
+
+// khi ở trạng thái này thì các read mới sẽ không được vào read nữa mà chỉ được add ticket
+// khi reading count về 0 thì sẽ chuyển về empty???
+// nhưng như thế thì các read lại có thể chiếm quyền read????
