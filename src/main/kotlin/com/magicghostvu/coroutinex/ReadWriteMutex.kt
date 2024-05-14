@@ -10,8 +10,6 @@ import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
 
-//todo: job read hoặc write bị cancel khi đang await ticket
-// phải đánh thức các job khác để tránh dead-lock
 
 class ReadWriteMutex {
     private var state: ReadWriteMutexStateData = Empty
@@ -108,6 +106,7 @@ class ReadWriteMutex {
         contract {
             callsInPlace(action, InvocationKind.EXACTLY_ONCE)
         }
+        // temp var here to save req data for write???
         while (true) {
             val ticketOrAllowedWrite: Either<CompletableDeferred<Unit>, Unit> = synchronized(this) {
                 when (val tState = state) {
@@ -155,7 +154,7 @@ class ReadWriteMutex {
                                 // todo: consider optimize this
                                 is Writing -> {
 
-                                    // báo hiệu cho tất cả các read và write req recheck
+                                    // báo hiệu cho tất cả các read và write req re-check
                                     logger.debug(
                                         "read req is {}, write req is {}",
                                         tTState.readQueue.size,
