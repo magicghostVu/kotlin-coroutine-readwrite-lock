@@ -45,6 +45,11 @@ class ReadWriteMutex {
                         val ticket = tState.addReadReq()
                         Either.left(ticket)
                     }
+
+                    is WaitingCurrentReadDone -> {
+                        val ticket = tState.addReadReq()
+                        Either.left(ticket)
+                    }
                 }
             }
 
@@ -88,6 +93,32 @@ class ReadWriteMutex {
                                     }
                                 }
 
+                                is WaitingCurrentReadDone -> {
+                                    logger.debug("after read action at waiting current read done")
+                                    tTState.numCurrentRead--
+                                    if (tTState.numCurrentRead == 0) {
+                                        //dispatch tất cả các write nếu có các write
+                                        if (tTState.writeQueue.isNotEmpty()) {
+                                            tTState.writeQueue.forEach {
+                                                it.complete(Unit)
+                                            }
+                                            state = EmptyDelayRead(
+                                                tTState.readQueue
+                                            )
+                                        } else {
+                                            // về empty và dispatch all read
+                                            tTState.readQueue.forEach {
+                                                it.complete(Unit)
+                                            }
+                                            state = Empty
+                                        }
+                                    }
+                                }
+
+                                is EmptyDelayRead -> {
+                                    logger.warn("wrong logic, review code")
+                                }
+
                                 Empty -> {}
                                 is Writing -> {
                                     throw IllegalArgumentException("impossible")
@@ -118,12 +149,21 @@ class ReadWriteMutex {
 
                     is Reading -> {
                         val ticket = tState.addWriteReq()
+                        state = WaitingCurrentReadDone(
+                            tState.readingCount,
+                            writeQueue = tState.reqWrite
+                        )
                         Either.left(ticket)
                     }
 
                     is Writing -> {
                         //logger.debug("add write request")
                         Either.left(tState.addWriteReq())
+                    }
+
+                    is WaitingCurrentReadDone -> {
+
+                        TODO()
                     }
                 }
             }
@@ -195,12 +235,22 @@ class ReadWriteMutex {
     }
 
     private fun onCancelTicketRead(): Unit = synchronized(this) {
+        logger.debug("on cancel ticket read state is {}", state.javaClass.simpleName)
         when (val tState = state) {
-            Empty -> {
-
+            is Reading -> {
+                //todo: trừ số reading count đi???
+                // và check xem có về 0 chưa để chuyển state??
+                tState.readingCount--
             }
 
-            is Reading -> {}
+            is WaitingCurrentReadDone -> {
+                //todo: trừ số reading count đi???
+                // và check xem có về 0 chưa để chuyển??
+                tState.numCurrentRead--
+            }
+
+            is EmptyDelayRead -> {}
+            Empty -> {}
             is Writing -> {}
         }
     }
@@ -221,6 +271,11 @@ internal object Empty : ReadWriteMutexStateData() {
 
 }
 
+internal class EmptyDelayRead(
+    val readQueue: MutableList<CompletableDeferred<Unit>> = mutableListOf(),
+    val writeQueue: MutableSet<CompletableDeferred<Unit>> = linkedSetOf()
+) : ReadWriteMutexStateData() {}
+
 internal class Reading(
     val reqWrite: LinkedList<CompletableDeferred<Unit>> = LinkedList(),
     var readingCount: Int = 0,
@@ -230,6 +285,25 @@ internal class Reading(
     fun addWriteReq(): CompletableDeferred<Unit> {
         val res = CompletableDeferred<Unit>()
         reqWrite.add(res)
+        return res
+    }
+}
+
+// nếu đang read mà có yêu cầu write thì chuyển sang cái này
+internal class WaitingCurrentReadDone(
+    var numCurrentRead: Int,
+    val readQueue: MutableList<CompletableDeferred<Unit>> = mutableListOf(),
+    val writeQueue: MutableSet<CompletableDeferred<Unit>> = linkedSetOf(),
+) : ReadWriteMutexStateData() {
+    fun addReadReq(): CompletableDeferred<Unit> {
+        val res = CompletableDeferred<Unit>()
+        readQueue.add(res)
+        return res
+    }
+
+    fun addWriteReq(): CompletableDeferred<Unit> {
+        val res = CompletableDeferred<Unit>()
+        writeQueue.add(res)
         return res
     }
 }
