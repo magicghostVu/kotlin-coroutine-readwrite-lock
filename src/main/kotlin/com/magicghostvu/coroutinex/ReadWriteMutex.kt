@@ -45,6 +45,7 @@ class ReadWriteMutex {
                     }
 
                     is WaitingCurrentReadDone -> {
+                        logger.debug("read enqueued because of priority write")
                         val ticket = tState.addReadReq()
                         Either.left(ticket)
                     }
@@ -243,7 +244,7 @@ class ReadWriteMutex {
     private fun onCancelTicketWrite(ticket: CompletableDeferred<Unit>) = synchronized(this) {
         logger.debug("state at cancel ticket write {}", state.javaClass.simpleName)
 
-        // todo: check state possible here
+        // todo: check all states possible here
         when (val tState = state) {
             Empty -> {}
             is Reading -> {
