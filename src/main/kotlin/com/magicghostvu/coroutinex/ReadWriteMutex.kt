@@ -246,6 +246,8 @@ class ReadWriteMutex {
     // do nothing ??
     private fun onCancelTicketWrite(ticket: CompletableDeferred<Unit>) = synchronized(this) {
         logger.debug("state at cancel ticket write {}", state.javaClass.simpleName)
+
+        // todo: check state possible here
         when (val tState = state) {
             Empty -> {}
             is Reading -> {
@@ -253,7 +255,7 @@ class ReadWriteMutex {
             }
 
             is Writing -> {
-                
+                // todo: remove ticket
             }
 
             is EmptyDelayRead -> {}
