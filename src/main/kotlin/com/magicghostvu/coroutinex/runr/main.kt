@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory
 
 
 suspend fun main() {
+    System.setProperty("log4j.configurationFile", "log4j2.xml")
     val logger: Logger = LoggerFactory.getLogger("common")
     logger.debug("log ok")
 
