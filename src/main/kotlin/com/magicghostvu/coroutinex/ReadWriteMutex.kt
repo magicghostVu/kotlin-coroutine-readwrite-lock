@@ -3,6 +3,7 @@ package com.magicghostvu.coroutinex
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import kotlin.contracts.ExperimentalContracts
@@ -84,7 +85,6 @@ class ReadWriteMutex {
                                     tState.readingCount--
                                     // không còn ai đang read
                                     // thử check write
-
                                     if (tState.readingCount == 0) {
                                         // todo: notify for all write req
                                         tState.reqWrite.forEach {
@@ -96,11 +96,15 @@ class ReadWriteMutex {
                                 }
 
                                 is WaitingCurrentReadDone -> {
-                                    logger.debug("after read action at waiting current read done num read is {}", tState.numCurrentRead)
+                                    logger.debug(
+                                        "after read action at waiting current read done num read is {}",
+                                        tState.numCurrentRead
+                                    )
                                     tState.numCurrentRead--
                                     if (tState.numCurrentRead == 0) {
                                         //dispatch tất cả các write nếu có các write
                                         if (tState.writeQueue.isNotEmpty()) {
+                                            logger.debug("dispatch {} write req", tState.writeQueue.size)
                                             tState.writeQueue.forEach {
                                                 it.complete(Unit)
                                             }
@@ -218,6 +222,7 @@ class ReadWriteMutex {
                                         state = EmptyDelayRead(
                                             tTState.readQueue
                                         )
+                                        logger.debug("writing comeback to empty delay read")
                                     } else {
                                         logger.debug("writing comeback to empty")
                                         tTState.readQueue.forEach {
@@ -258,10 +263,35 @@ class ReadWriteMutex {
                 logger.debug("remove ticket at cancel ticket write {}", removed)
             }
 
-            is EmptyDelayRead -> {}
+            // nếu bị hủy trong trạng thái này thì
+            // khả năng là tất cả các write được wake đã bị hủy hết
+            // nên chuyển về empty và wake tất cả các read
+            is EmptyDelayRead -> {
+                //
+                //logger.debug("cancel write at empty delay read")
+                tState.readQueue.forEach {
+                    it.complete(Unit)
+                }
+                state = Empty
+            }
+
+            // chờ các read hiện tại xong và chuyển sang write
+            // phải test trường hợp mà tất cả các write req đã được dispatch nhưng không có action write nào được gọi
             is WaitingCurrentReadDone -> {
                 val removed = tState.writeQueue.remove(ticket)
                 logger.debug("remove write ticket at wait current read done {}", removed)
+                if (removed) {
+                    // check write queue empty
+                    logger.debug("write queue size after remove is {}", tState.writeQueue.size)
+                    if (tState.writeQueue.isEmpty()) {
+                        //đánh thức tất cả các read và chuyển sang reading???
+                        tState.readQueue.forEach {
+                            it.complete(Unit)
+                        }
+                        state = Reading(readingCount = tState.numCurrentRead)
+                    }
+                }
+                Unit
             }
         }
     }
