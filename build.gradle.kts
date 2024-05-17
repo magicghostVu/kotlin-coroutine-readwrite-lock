@@ -13,9 +13,7 @@ repositories {
 val log4jVersion = "2.17.2"
 dependencies {
 
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4")
-
-
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4")
     implementation("org.slf4j:slf4j-api:1.7.25")
     runtimeOnly("org.apache.logging.log4j:log4j-slf4j-impl:$log4jVersion")
     runtimeOnly("org.apache.logging.log4j:log4j-core:$log4jVersion")

@@ -3,7 +3,6 @@ package com.magicghostvu.coroutinex
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.delay
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import kotlin.contracts.ExperimentalContracts
@@ -138,6 +137,7 @@ class ReadWriteMutex {
     }
 
 
+
     @OptIn(ExperimentalContracts::class)
     suspend fun <T> write(action: suspend () -> T): T {
         contract {
@@ -259,6 +259,7 @@ class ReadWriteMutex {
             is Writing -> {
                 // todo: remove ticket
                 // có khi nào nó không remove được??
+                // sẽ không remove được khi ticket này thuộc về wait current read done trước đó
                 val removed = tState.writeQueue.remove(ticket)
                 logger.debug("remove ticket at cancel ticket write {}", removed)
             }
