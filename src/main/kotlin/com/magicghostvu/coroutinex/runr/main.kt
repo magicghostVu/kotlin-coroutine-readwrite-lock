@@ -72,7 +72,8 @@ suspend fun test1() {
 }
 
 // test case này phải được thiết kế sao cho cancel ticket write sau khi
-// wait read done -> empty delay read để cho không cái write nào được dispatch -> dead-lock
+// wait read done -> empty delay read để cho không cái write nào được dispatch -> deadlock
+// do không thể read mà chỉ có thể đợi write tiếp sau
 suspend fun testDeadLockCancelTicketWrite() {
     val logger = LoggerFactory.getLogger("common")
     val mutex = ReadWriteMutex()
