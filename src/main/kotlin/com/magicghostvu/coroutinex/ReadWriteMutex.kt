@@ -267,6 +267,8 @@ class ReadWriteMutex {
             // nếu bị hủy trong trạng thái này thì
             // khả năng là tất cả các write được wake đã bị hủy hết
             // nên chuyển về empty và wake tất cả các read
+            // todo: có thể ghi lại các ticket write đã được dispatch ở phase WaitingCurrentReadDone
+            //  để nếu ticket đó có thể xóa được ở đây thì check và có thể quay lại empty
             is EmptyDelayRead -> {
                 //
                 //logger.debug("cancel write at empty delay read")
