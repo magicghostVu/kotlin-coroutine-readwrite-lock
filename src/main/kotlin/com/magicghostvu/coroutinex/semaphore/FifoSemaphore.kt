@@ -8,9 +8,9 @@ import kotlinx.coroutines.withContext
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-class FifoSemaphore(private val originPermits: Int) {
+internal class FifoSemaphore(private val originPermits: Int) {
     private var numPermitsRemain: Int = originPermits
-    private var permitWait = -1;
+    private var permitWait = -1
     private val lockAcquire = Mutex()
     private val lockPermit = Mutex()
     private val lockWait = Mutex(true)
