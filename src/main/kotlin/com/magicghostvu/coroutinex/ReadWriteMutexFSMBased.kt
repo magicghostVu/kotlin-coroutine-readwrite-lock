@@ -9,7 +9,7 @@ import kotlin.contracts.ExperimentalContracts
 
 
 
-class ReadWriteMutexFSMBased : ReadWriteMutex() {
+class ReadWriteMutexFSMBased internal constructor(): ReadWriteMutex() {
     private var state: ReadWriteMutexStateData = Empty
 
     private val logger: Logger = LoggerFactory.getLogger("rw-mutex")

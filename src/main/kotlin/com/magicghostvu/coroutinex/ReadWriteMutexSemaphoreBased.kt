@@ -2,7 +2,7 @@ package com.magicghostvu.coroutinex
 
 import com.magicghostvu.coroutinex.semaphore.FifoSemaphore
 
-class ReadWriteMutexSemaphoreBased(): ReadWriteMutex() {
+class ReadWriteMutexSemaphoreBased internal constructor() : ReadWriteMutex() {
     private val semaphore = FifoSemaphore(numPermitForSemaphore)
 
     override suspend fun <T> readImpl(action: suspend () -> T): T {
