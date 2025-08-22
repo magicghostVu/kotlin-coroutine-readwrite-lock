@@ -1,18 +1,11 @@
 package com.magicghostvu.coroutinex
 
 import com.magicghostvu.coroutinex.semaphore.FifoSemaphore
-import kotlin.contracts.ExperimentalContracts
-import kotlin.contracts.InvocationKind
-import kotlin.contracts.contract
 
-class ReadWriteMutexSemaphoreBased() {
+class ReadWriteMutexSemaphoreBased(): ReadWriteMutex() {
     private val semaphore = FifoSemaphore(numPermitForSemaphore)
 
-    @OptIn(ExperimentalContracts::class)
-    suspend fun <T> read(action: suspend () -> T): T {
-        contract {
-            callsInPlace(action, InvocationKind.EXACTLY_ONCE)
-        }
+    override suspend fun <T> readImpl(action: suspend () -> T): T {
         semaphore.acquire(1)
         return try {
             action()
@@ -21,11 +14,7 @@ class ReadWriteMutexSemaphoreBased() {
         }
     }
 
-    @OptIn(ExperimentalContracts::class)
-    suspend fun <T> write(action: suspend () -> T): T {
-        contract {
-            callsInPlace(action, InvocationKind.EXACTLY_ONCE)
-        }
+    override suspend fun <T> writeImpl(action: suspend () -> T): T {
         semaphore.acquire(numPermitForSemaphore)
         return try {
             action()
@@ -36,6 +25,6 @@ class ReadWriteMutexSemaphoreBased() {
 
     private companion object {
         //1M concurrent read task
-        private val numPermitForSemaphore = 1_000_000
+        private val numPermitForSemaphore = 10_000_000
     }
 }
