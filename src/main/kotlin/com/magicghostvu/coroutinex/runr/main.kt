@@ -1,7 +1,7 @@
 package com.magicghostvu.coroutinex.runr
 
 import com.magicghostvu.coroutinex.ReadWriteMutex.Companion.ReadWriteMutex
-import com.magicghostvu.coroutinex.ReadWriteMutexSemaphoreBased
+import com.magicghostvu.coroutinex.UnderlyingImplType
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -24,7 +24,7 @@ suspend fun test1() {
     val logger = LoggerFactory.getLogger("common")
     delay(1000)
     coroutineScope {
-        val readWriteMutex = ReadWriteMutex()
+        val readWriteMutex = ReadWriteMutex(UnderlyingImplType.SEMAPHORE)
         var t = 0;
         launch {
             logger.debug("c1 try to write")
@@ -77,7 +77,7 @@ suspend fun test1() {
 // do không thể read mà chỉ có thể đợi write tiếp sau
 suspend fun testDeadLockCancelTicketWrite() {
     val logger = LoggerFactory.getLogger("common")
-    val mutex = ReadWriteMutexSemaphoreBased()
+    val mutex = ReadWriteMutex(UnderlyingImplType.SEMAPHORE)
     coroutineScope {
         launch {
             logger.debug("start c1")
@@ -134,7 +134,7 @@ suspend fun testDeadLockCancelTicketWrite() {
 suspend fun testWritePriority() {
     val logger = LoggerFactory.getLogger("common")
     coroutineScope {
-        val mutex = ReadWriteMutexSemaphoreBased()
+        val mutex = ReadWriteMutex(UnderlyingImplType.SEMAPHORE)
         launch {
             mutex.read {
                 logger.debug("c1 read")
