@@ -24,7 +24,7 @@ class ReadWriteMutexSemaphoreBased internal constructor() : ReadWriteMutex() {
     }
 
     private companion object {
-        //1M concurrent read task
-        private val numPermitForSemaphore = 10_000_000
+        //100M concurrent read task
+        private val numPermitForSemaphore = 100_000_000
     }
 }
