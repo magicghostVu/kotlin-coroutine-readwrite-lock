@@ -3,6 +3,7 @@ This mutex is implemented with writing priority<br>
 When some reading are in operation, some write requests come<br>
 and subsequent read requests will be executed after all write requests done<br>
 <b>This mutex is NOT reentrant<b><br>
+This mutex is cancellation safe<br>
 Example:<br>
 <code>val mutex = ReadWriteMutex()<br>
 mutex.read {<br>
